@@ -1,0 +1,44 @@
+/// Programs in lobotomy are lists of statements
+program = { statement* }
+
+/// There are several different types of statements, and they're all terminated with
+/// semicolons.
+statement = { (assignment | incr | decr | while | if | read | print) ~ ";" }
+
+/* STATEMENTS */
+/// Copy the results of an expression into a variable
+assignment = { iden ~ "=" ~ expr }
+/// Increment or decrement the value of a variable
+incr = { iden ~ "-=" ~ literal }
+decr = { iden ~ "+=" ~ literal }
+
+/// Control flow
+while = { "while" ~ expr ~ "{" ~ program ~ "}" }
+if = { "if" ~ expr ~ "{" ~ program ~ "}" }
+
+read = { "read" ~ iden }
+print = { "print" ~ expr }
+
+/* EXPRESSIONS */
+/// Expressions in lobotomy support addition, subtraction, and multiplication of
+/// variables and literals. Multiplication has a higher precedence than addition
+/// or subtraction, and parenthesised expressions have a higher precedence than
+/// multiplication.
+///
+/// 
+expr = { factor ~ (expr_op ~ expr)? }
+expr_op = {"+" | "-"}
+factor = { term ~ ("*" ~ factor)? }
+term = { literal | iden | ("(" ~ expr ~ ")") }
+
+/// Variable identifiers in lobotomy start with "#" and are followed by at least
+/// one alphanumeric character. Identifiers can also contain underscores
+iden = { "#" ~ (ASCII_ALPHANUMERIC | "_")+ }
+
+/// Literals in lobotomy can either be unsigned integer literals or character literals.
+/// Examples:
+///  - "42", "0", or "255" are all valid
+///  - "'a'" is equivalent to "61"
+literal = { ASCII_DIGIT+ | ("'" ~ ASCII_ALPHANUMERIC ~ "'") }
+
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
