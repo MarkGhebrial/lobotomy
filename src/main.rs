@@ -1,9 +1,6 @@
 use std::fs;
 
-use pest::{
-    Parser,
-    iterators::Pair,
-};
+use pest::Parser;
 use pest_derive::Parser;
 
 mod ast;
@@ -12,8 +9,6 @@ use ast::*;
 #[derive(Parser)]
 #[grammar = "grammar.pest"] // relative to src
 struct MyParser;
-
-
 
 #[derive(Debug)]
 enum Instruction {
@@ -65,12 +60,12 @@ impl SymbolTable {
     pub fn new_internal_symbol(&mut self) -> SymbolIndex {
         self.push_symbol(SymbolTableEntry {
             external_name: None,
-            symbol_type: SymbolType::Variable,
+            // symbol_type: SymbolType::Variable,
         })
     }
 
     /// Given an identifier
-    pub fn get_or_insert_symbol(&mut self, iden: Iden) -> SymbolIndex {
+    pub fn get_or_insert_symbol(&mut self, iden: &Iden) -> SymbolIndex {
         // If there's a named symbol in the table with the same name as the identifier ...
         for (i, entry) in self.table.iter().enumerate() {
             if let Some(name) = &entry.external_name
@@ -82,8 +77,8 @@ impl SymbolTable {
         }
         // ...else, add a new symbol
         self.push_symbol(SymbolTableEntry {
-            external_name: Some(iden.name),
-            symbol_type: SymbolType::Variable,
+            external_name: Some(iden.name.clone()),
+            // symbol_type: SymbolType::Variable,
         })
     }
 }
@@ -92,30 +87,30 @@ impl SymbolTable {
 type SymbolIndex = usize;
 
 // TODO: Maybe rename this to SymbolMutability.
-#[derive(Debug)]
-enum SymbolType {
-    Variable,
-    Constant,
-}
+// #[derive(Debug)]
+// enum SymbolType {
+//     Variable,
+//     Constant,
+// }
 
 #[derive(Debug)]
 struct SymbolTableEntry {
     pub external_name: Option<String>,
-    pub symbol_type: SymbolType,
+    // pub symbol_type: SymbolType,
 }
 
 /// Given an AST node of type Program and a symbol table, generate a list of instructions.
-fn transform_program(p: Program, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+fn transform_program(p: &Program, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     let mut instrs: Vec<Instruction> = Vec::new();
 
-    for statement in p.statements {
+    for statement in &p.statements {
         instrs.append(&mut transform_statement(statement, symbol_table));
     }
 
     instrs
 }
 
-fn transform_statement(s: Statement, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+fn transform_statement(s: &Statement, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     match s {
         Statement::Assignment(a) => transform_assignment(a, symbol_table),
         Statement::While(w) => transform_while(w, symbol_table),
@@ -128,79 +123,79 @@ fn transform_statement(s: Statement, symbol_table: &mut SymbolTable) -> Vec<Inst
 /// Transform an assignment node of the AST to instructions.
 ///
 /// Assignment instructions =
-fn transform_assignment(a: Assignment, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
-    let dest = transform_iden(a.dest, symbol_table);
-    let (expr_result, mut expr_instrs) = transform_expr(a.src, symbol_table);
+fn transform_assignment(a: &Assignment, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+    let dest = transform_iden(&a.dest, symbol_table);
 
-    // Copy the expression result into the destination symbol
-    let mut copy_instrs = copy(expr_result, dest, symbol_table);
-
-    expr_instrs.append(&mut copy_instrs);
-    expr_instrs
+    transform_expr(&a.src, dest, symbol_table)
 }
 
 /// Take an Iden node of the AST and insert it into the symbol table, returning the index of the new symbol.
-fn transform_iden(i: Iden, symbol_table: &mut SymbolTable) -> SymbolIndex {
+fn transform_iden(i: &Iden, symbol_table: &mut SymbolTable) -> SymbolIndex {
     symbol_table.get_or_insert_symbol(i)
 }
 
-fn transform_expr(e: Expr, symbol_table: &mut SymbolTable) -> (SymbolIndex, Vec<Instruction>) {
+fn transform_expr(
+    e: &Expr,
+    target_symbol: SymbolIndex,
+    symbol_table: &mut SymbolTable,
+) -> Vec<Instruction> {
     // Evaluate the left hand side of the expression
-    let (lhs_symbol, mut instrs) = transform_factor(e.factor, symbol_table);
+    let mut instrs = transform_factor(&e.factor, target_symbol, symbol_table);
 
-    let mut output_symbol = lhs_symbol;
-
-    use Instruction::*;
     // Does the expression have a rhs?
-    if let Some((op, rhs_expr)) = e.op {
+    if let Some((op, rhs_expr)) = &e.op {
         // If so, compute that expression
-        let (left_expr_result, mut left_expr_instrs) = transform_expr(*rhs_expr, symbol_table);
-        instrs.append(&mut left_expr_instrs);
-
-        // Copy the result of the expression into a temporary variable
-        let temp = symbol_table.new_internal_symbol();
-        instrs.append(&mut copy(left_expr_result, temp, symbol_table));
-
-        // Create a new symbol to store the result 
-        output_symbol = symbol_table.new_internal_symbol();
-        instrs.append(&mut copy(lhs_symbol, output_symbol, symbol_table));
+        let right_expr_result = symbol_table.new_internal_symbol();
+        let mut right_expr_instrs = transform_expr(&rhs_expr, right_expr_result, symbol_table);
+        instrs.append(&mut right_expr_instrs);
 
         // Do the actual operation
+        use Instruction::*;
         instrs.append(&mut vec![
             // while (temp) { temp -= 1; op_result += 1; }
-            Goto { symbol_index: temp },
+            Goto {
+                symbol_index: right_expr_result,
+            },
             Loop {
                 instructions: vec![
                     Decr { n: 1 },
                     Goto {
-                        symbol_index: output_symbol,
+                        symbol_index: target_symbol,
                     },
                     match op {
                         ExprOp::Add => Incr { n: 1 },
                         ExprOp::Subtract => Decr { n: 1 },
                     },
-                    Goto { symbol_index: temp },
+                    Goto {
+                        symbol_index: right_expr_result,
+                    },
                 ],
             },
         ]);
     }
 
-    (output_symbol, instrs)
+    instrs
 }
 
-fn transform_factor(f: Factor, symbol_table: &mut SymbolTable) -> (SymbolIndex, Vec<Instruction>) {
-    let (lhs_symbol, instrs) = transform_term(f.term, symbol_table);
+fn transform_factor(
+    f: &Factor,
+    target_symbol: SymbolIndex,
+    symbol_table: &mut SymbolTable,
+) -> Vec<Instruction> {
+    let instrs = transform_term(&f.term, target_symbol, symbol_table);
 
-    let output_symbol = lhs_symbol;
-
-    if let Some((_op, _factor)) = f.op {
-        unimplemented!("multiplication not implemented in the compiler (yet!)");
+    if let Some((_op, _factor)) = &f.op {
+        unimplemented!("multiplication not implemented (yet!)");
     }
 
-    (output_symbol, instrs)
+    instrs
 }
 
-fn transform_term(t: Term, symbol_table: &mut SymbolTable) -> (SymbolIndex, Vec<Instruction>) {
+fn transform_term(
+    t: &Term,
+    target_symbol: SymbolIndex,
+    symbol_table: &mut SymbolTable,
+) -> Vec<Instruction> {
     match t {
         // For literal terms, we just create a new internal symbol and increment it to its
         // required constant value. This means that *every* literal
@@ -208,18 +203,22 @@ fn transform_term(t: Term, symbol_table: &mut SymbolTable) -> (SymbolIndex, Vec<
         // possibly mitigate the need to move the cell pointer large amounts to access far-away
         // literal values.
         Term::Literal(literal) => {
-            let symbol = symbol_table.new_internal_symbol();
-
             use Instruction::*;
             let instrs: Vec<Instruction> = vec![
-                Goto { symbol_index: symbol },
-                Incr { n: literal.value }
+                Goto {
+                    symbol_index: target_symbol,
+                },
+                Incr { n: literal.value },
             ];
 
-            (symbol, instrs)
-        },
-        Term::Iden(iden) => (transform_iden(iden, symbol_table), Vec::new()),
-        Term::Expr(expr) => transform_expr(*expr, symbol_table),
+            instrs
+        }
+        Term::Iden(iden) => {
+            let symbol = transform_iden(iden, symbol_table);
+
+            copy(symbol, target_symbol, symbol_table)
+        }
+        Term::Expr(expr) => transform_expr(&expr, target_symbol, symbol_table),
     }
 }
 
@@ -263,56 +262,101 @@ fn copy(src: SymbolIndex, dest: SymbolIndex, symbol_table: &mut SymbolTable) -> 
     instrs
 }
 
-fn transform_while(w: While, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+fn transform_while(w: &While, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     use Instruction::*;
 
-    unimplemented!("while loops are broken!");
-    
-    // Evaluate the expression
-    let (expr_symbol, mut instrs) = transform_expr(w.expr, symbol_table);
-    
+    // Evaluate the loop expression
     let loop_symbol = symbol_table.new_internal_symbol();
-    // Copy the expression result to the new loop symbol
-    instrs.append(&mut copy(expr_symbol, loop_symbol, symbol_table));
-    // Move the cell pointer to the loop symbol
-    instrs.push(Goto { symbol_index: loop_symbol });
+    let mut instrs = transform_expr(&w.expr, loop_symbol, symbol_table);
 
-    // Execute the loop contents, then move the cell pointer back to the expression result
-    let mut loop_body = transform_program(w.body, symbol_table);
-    // loop_body.append(&mut transform_expr(w.expr, symbol_table));
-    loop_body.append(&mut vec![
-        Goto { symbol_index: loop_symbol },
-    ]);
-    
-    instrs.push(Loop { instructions: loop_body });
+    // Move the cell pointer to the loop symbol
+    instrs.push(Goto {
+        symbol_index: loop_symbol,
+    });
+
+    // In the loop...
+    let mut loop_body = transform_program(&w.body, symbol_table); // ...execute the body of the loop...
+    loop_body.append(&mut transform_expr(&w.expr, loop_symbol, symbol_table)); // ...reevaluate the expression...
+    loop_body.push(Goto {
+        symbol_index: loop_symbol,
+    }); // ...and move the cell pointer back to the expression result.
+
+    instrs.push(Loop {
+        instructions: loop_body,
+    });
 
     instrs
 }
 
-fn transform_if(i: If, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
-    todo!()
+fn transform_if(i: &If, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+    use Instruction::*;
+
+    let condition_symbol = symbol_table.new_internal_symbol();
+    let mut instrs = transform_expr(&i.expr, condition_symbol, symbol_table);
+
+    let zero_symbol = symbol_table.new_internal_symbol();
+    instrs.append(&mut vec![
+        Goto {
+            symbol_index: zero_symbol,
+        },
+        Loop {
+            instructions: vec![Decr { n: 1 }],
+        },
+    ]);
+
+    instrs.push(Goto {
+        symbol_index: condition_symbol,
+    });
+
+    let mut if_body = transform_program(&i.body, symbol_table);
+    if_body.push(Goto {
+        symbol_index: zero_symbol,
+    }); // JMove the cell pointer to the zero symbol so we're guaranteed the loop exits
+
+    instrs.push(Loop {
+        instructions: if_body,
+    });
+
+    instrs
 }
 
-fn transform_read(r: Read, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
-    let symbol = transform_iden(r.iden, symbol_table);
-    
+fn transform_read(r: &Read, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+    let symbol = transform_iden(&r.iden, symbol_table);
+
     use Instruction::*;
     vec![
-        Goto { symbol_index: symbol },
+        Goto {
+            symbol_index: symbol,
+        },
         Read,
     ]
 }
 
-fn transform_print(p: Print, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
-    let (expr_symbol, mut instrs) = transform_expr(p.expr, symbol_table);
+fn transform_print(p: &Print, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
+    let expr_result = symbol_table.new_internal_symbol();
+    let mut instrs = transform_expr(&p.expr, expr_result, symbol_table);
 
     use Instruction::*;
     instrs.append(&mut vec![
-        Goto { symbol_index: expr_symbol },
-        Print
+        Goto {
+            symbol_index: expr_result,
+        },
+        Print,
     ]);
 
     instrs
+}
+
+/// Enumeration of all the commands in Brainf*ck
+enum BFCommand {
+    ShiftPointerLeft,  // <
+    ShiftPointerRight, // >
+    IncrementCell,     // +
+    DecrementCell,     // -
+    OutputByte,        // .
+    InputByte,         // ,
+    JumpForward,       // [
+    JumpBackward,      // ]
 }
 
 fn main() {
@@ -328,7 +372,7 @@ fn main() {
     // Create the symbol table
     let mut symbol_table: SymbolTable = SymbolTable::new();
     // Transform the AST to a list of Instructions
-    let instructions = transform_program(program, &mut symbol_table);
+    let instructions = transform_program(&program, &mut symbol_table);
 
     println!("SYMBOL TABLE");
     println!("{:#?}", symbol_table);
