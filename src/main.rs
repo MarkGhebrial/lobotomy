@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, process::exit};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -96,7 +96,6 @@ type SymbolIndex = usize;
 #[derive(Debug)]
 struct SymbolTableEntry {
     pub external_name: Option<String>,
-    // pub symbol_type: SymbolType,
 }
 
 /// Given an AST node of type Program and a symbol table, generate a list of instructions.
@@ -348,35 +347,102 @@ fn transform_print(p: &Print, symbol_table: &mut SymbolTable) -> Vec<Instruction
 }
 
 /// Enumeration of all the commands in Brainf*ck
+#[repr(u8)]
 enum BFCommand {
-    ShiftPointerLeft,  // <
-    ShiftPointerRight, // >
-    IncrementCell,     // +
-    DecrementCell,     // -
-    OutputByte,        // .
-    InputByte,         // ,
-    JumpForward,       // [
-    JumpBackward,      // ]
+    ShiftPointerLeft = b'<',  // <
+    ShiftPointerRight = b'>', // >
+    IncrementCell = b'+',     // +
+    DecrementCell = b'-',     // -
+    OutputByte = b'.',        // .
+    InputByte = b',',         // ,
+    JumpForward = b'[',       // [
+    JumpBackward = b']',      // ]
+}
+
+/// Given a symbol table and a vector of [Instruction]s, generate the final Brainf*ck
+/// code.
+fn generate_bf(
+    commands: &mut Vec<BFCommand>,
+    cell_pointer: &mut usize,
+    symbol_table: &SymbolTable,
+    instrs: &Vec<Instruction>,
+) {
+    use BFCommand::*;
+
+    for instr in instrs {
+        match instr {
+            Instruction::Goto { symbol_index } => {
+                // Move the pointer right if it's to the left of the symbol's address.
+                if *symbol_index > *cell_pointer {
+                    for _ in 0..(*symbol_index - *cell_pointer) {
+                        commands.push(ShiftPointerRight);
+                    }
+                }
+                // Move the pointer left if it's to the right of the symbol's address.
+                else if *cell_pointer > *symbol_index {
+                    for _ in 0..(*cell_pointer - *symbol_index) {
+                        commands.push(ShiftPointerLeft);
+                    }
+                }
+
+                // Keep track of the cell's new location
+                *cell_pointer = *symbol_index;
+            }
+            Instruction::Incr { n } => {
+                for _ in 0..*n {
+                    commands.push(IncrementCell);
+                }
+            }
+            Instruction::Decr { n } => {
+                for _ in 0..*n {
+                    commands.push(DecrementCell);
+                }
+            }
+            Instruction::Loop { instructions } => {
+                commands.push(JumpForward);
+                generate_bf(commands, cell_pointer, symbol_table, instructions);
+                commands.push(JumpBackward);
+            }
+            Instruction::Print => {
+                commands.push(OutputByte);
+            }
+            Instruction::Read => {
+                commands.push(InputByte);
+            }
+        }
+    }
 }
 
 fn main() {
-    let file_name = std::env::args().nth(1).unwrap();
+    let Some(file_name) = std::env::args().nth(1) else {
+        println!("Usage: lobotomy <source_file>");
+        exit(0);
+    };
 
     let file_contents = &fs::read_to_string(file_name).unwrap();
     let mut parse_result = MyParser::parse(Rule::program, file_contents).unwrap();
 
     // Convert the parse tree to an AST
     let program = Program::from_pair(parse_result.nth(0).unwrap());
-    println!("{:#?}", program);
+    // println!("{:#?}", program);
 
     // Create the symbol table
     let mut symbol_table: SymbolTable = SymbolTable::new();
     // Transform the AST to a list of Instructions
     let instructions = transform_program(&program, &mut symbol_table);
 
-    println!("SYMBOL TABLE");
-    println!("{:#?}", symbol_table);
+    // println!("SYMBOL TABLE");
+    // println!("{:#?}", symbol_table);
 
-    println!("INSTRUCTIONS");
-    println!("{:#?}", instructions);
+    // println!("INSTRUCTIONS");
+    // println!("{:#?}", instructions);
+
+    let mut code: Vec<BFCommand> = Vec::new();
+    generate_bf(&mut code, &mut 0, &symbol_table, &instructions);
+
+    let code = code.into_iter().map(|c| c as u8 as char);
+
+    for c in code {
+        print!("{c}");
+    }
 }
