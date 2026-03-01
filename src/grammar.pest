@@ -39,6 +39,9 @@ iden = { "#" ~ (ASCII_ALPHANUMERIC | "_")+ }
 /// Examples:
 ///  - "42", "0", or "255" are all valid
 ///  - "'a'" is equivalent to "61"
-literal = { ASCII_DIGIT+ | ("'" ~ ASCII_ALPHANUMERIC ~ "'") }
+literal = { ASCII_DIGIT+ | ("'" ~ ASCII ~ "'") }
 
 WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+COMMENT = _{ end_of_line_comment | multiline_comment }
+end_of_line_comment = { "//" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
+multiline_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
