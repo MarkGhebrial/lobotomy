@@ -1,3 +1,5 @@
+file = _{ SOI ~ program ~ EOI }
+
 /// Programs in lobotomy are lists of statements
 program = { statement* }
 
@@ -24,8 +26,6 @@ print = { "print" ~ expr }
 /// variables and literals. Multiplication has a higher precedence than addition
 /// or subtraction, and parenthesised expressions have a higher precedence than
 /// multiplication.
-///
-/// 
 expr = { factor ~ (expr_op ~ expr)? }
 expr_op = {"+" | "-"}
 factor = { term ~ ("*" ~ factor)? }

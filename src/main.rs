@@ -204,9 +204,15 @@ fn transform_term(
         Term::Literal(literal) => {
             use Instruction::*;
             let instrs: Vec<Instruction> = vec![
+                // Move the cell pointer to the address of the target symbol
                 Goto {
                     symbol_index: target_symbol,
                 },
+                // Set the cell to zero
+                Loop {
+                    instructions: vec![Decr { n: 1 }],
+                },
+                // Set the value of the cell to the value of the literal
                 Incr { n: literal.value },
             ];
 
@@ -224,6 +230,11 @@ fn transform_term(
 /// Generate instructions to copy the value of one symbol to another symbol.
 fn copy(src: SymbolIndex, dest: SymbolIndex, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     let mut instrs: Vec<Instruction> = Vec::new();
+
+    // Copying a symbol to itself does not work.
+    if src == dest {
+        return instrs;
+    }
 
     let temp = symbol_table.new_internal_symbol();
 
@@ -419,8 +430,15 @@ fn main() {
         exit(0);
     };
 
-    let file_contents = &fs::read_to_string(file_name).unwrap();
-    let mut parse_result = MyParser::parse(Rule::program, file_contents).unwrap();
+    let file_contents = &fs::read_to_string(&file_name).unwrap();
+
+    let mut parse_result = match MyParser::parse(Rule::file, file_contents) {
+        Ok(p) => p,
+        Err(e) => {
+            println!("Parsing error:\n{e}");
+            exit(-1);
+        }
+    };
 
     // Convert the parse tree to an AST
     let program = Program::from_pair(parse_result.nth(0).unwrap());
@@ -441,6 +459,9 @@ fn main() {
     generate_bf(&mut code, &mut 0, &symbol_table, &instructions);
 
     let code = code.into_iter().map(|c| c as u8 as char);
+
+    // let output_file = fs::File::open(file_name + ".bf").unwrap();
+    // output_file.
 
     for c in code {
         print!("{c}");
