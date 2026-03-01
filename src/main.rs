@@ -1,10 +1,12 @@
-use std::{fs, process::exit};
+use std::{error::Error, fs::{self, File}, io::Write, process::exit};
 
 use pest::Parser;
 use pest_derive::Parser;
 
 mod ast;
 use ast::*;
+
+mod test;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"] // relative to src
@@ -424,46 +426,43 @@ fn generate_bf(
     }
 }
 
-fn main() {
-    let Some(file_name) = std::env::args().nth(1) else {
-        println!("Usage: lobotomy <source_file>");
-        exit(0);
-    };
-
-    let file_contents = &fs::read_to_string(&file_name).unwrap();
-
-    let mut parse_result = match MyParser::parse(Rule::file, file_contents) {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Parsing error:\n{e}");
-            exit(-1);
-        }
-    };
+pub fn compile(src: &str) -> Result<String, Box<dyn Error>> {
+    let mut parse_result = MyParser::parse(Rule::file, src)?;
 
     // Convert the parse tree to an AST
     let program = Program::from_pair(parse_result.nth(0).unwrap());
-    // println!("{:#?}", program);
 
     // Create the symbol table
     let mut symbol_table: SymbolTable = SymbolTable::new();
     // Transform the AST to a list of Instructions
     let instructions = transform_program(&program, &mut symbol_table);
 
-    // println!("SYMBOL TABLE");
-    // println!("{:#?}", symbol_table);
-
-    // println!("INSTRUCTIONS");
-    // println!("{:#?}", instructions);
-
     let mut code: Vec<BFCommand> = Vec::new();
     generate_bf(&mut code, &mut 0, &symbol_table, &instructions);
 
-    let code = code.into_iter().map(|c| c as u8 as char);
+    Ok(code.into_iter().map(|c| c as u8 as char).collect())
+}
 
-    // let output_file = fs::File::open(file_name + ".bf").unwrap();
-    // output_file.
+fn main() {
+    // Parse command line args
+    let Some(file_name) = std::env::args().nth(1) else {
+        println!("Usage: lobotomy <source_file>");
+        exit(0);
+    };
 
-    for c in code {
-        print!("{c}");
-    }
+    // Read the source file
+    let file_contents = &fs::read_to_string(&file_name).unwrap();
+
+    // Compile the code!
+    let code = match compile(&file_contents) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("{}", e);
+            exit(-1);
+        },
+    };
+
+    // Write the compiled code to a file called "a.bf"
+    let mut output_file = File::create("a.bf").unwrap();
+    output_file.write_all(code.as_bytes()).unwrap();
 }

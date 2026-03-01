@@ -12,6 +12,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "brain_fudge"
+version = "0.1.0"
+source = "git+https://github.com/MarkGhebrial/BrainFudge.git#0320ec8d1242c78229ea96daed6b6704ee87c212"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,6 +71,7 @@ checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 name = "lobotomy"
 version = "0.1.0"
 dependencies = [
+ "brain_fudge",
  "pest",
  "pest_derive",
 ]

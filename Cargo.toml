@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 pest = "2.8.6"
 pest_derive = "2.8.6"
+
+[dev-dependencies]
+# Brainf*ck interpreter
+brain_fudge = { git = "https://github.com/MarkGhebrial/BrainFudge.git" }

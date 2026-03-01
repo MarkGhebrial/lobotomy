@@ -1,0 +1,43 @@
+#continue = 1;
+while #continue {
+    // Read in a character, then print it
+    read #c;
+    print #c;
+
+    #t = 
+    while #t {
+        #c = #c 
+    };
+
+    #eq = @eq(#c, '.');
+
+    if #c == '.' {
+        #continue = 0;
+    };
+};
+
+// Test if #a == #b. Does not overflow.
+//
+// Procedure parameters in lobo are pass-by-reference. That means you can mutate
+// parameters to "return" values.
+procedure @eq(#a, #b) -> #o {
+    #a_gt_b = 0;
+
+    #continue = 1;
+    while #continue {
+        if #a == 0 {
+
+        }
+    };
+
+    if #a > #b {
+        #difference = #a - #b;
+    } else {
+        #difference = #b - #a;
+    };
+
+    #o = 1;
+    if #difference {
+        #o = 0;
+    };
+};
