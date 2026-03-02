@@ -54,7 +54,7 @@ impl Statement {
 #[derive(Debug)]
 pub struct Assignment {
     pub dest: Iden,
-    pub src: Expr,
+    pub src: BExpr,
 }
 impl Assignment {
     pub fn from_pair(p: Pair<'_, Rule>) -> Self {
@@ -65,7 +65,7 @@ impl Assignment {
         let mut inner_pairs = p.into_inner();
 
         let dest = Iden::from_pair(inner_pairs.next().unwrap());
-        let src = Expr::from_pair(inner_pairs.next().unwrap());
+        let src = BExpr::from_pair(inner_pairs.next().unwrap());
 
         Self { dest, src }
     }
@@ -73,7 +73,7 @@ impl Assignment {
 
 #[derive(Debug)]
 pub struct While {
-    pub expr: Expr,
+    pub bexpr: BExpr,
     pub body: Program,
 }
 impl While {
@@ -84,16 +84,16 @@ impl While {
 
         let mut inner_pairs = p.into_inner();
 
-        let expr = Expr::from_pair(inner_pairs.next().unwrap());
+        let bexpr = BExpr::from_pair(inner_pairs.next().unwrap());
         let body = Program::from_pair(inner_pairs.next().unwrap());
 
-        Self { expr, body }
+        Self { bexpr, body }
     }
 }
 
 #[derive(Debug)]
 pub struct If {
-    pub expr: Expr,
+    pub bexpr: BExpr,
     pub body: Program,
 }
 impl If {
@@ -104,10 +104,10 @@ impl If {
 
         let mut inner_pairs = p.into_inner();
 
-        let expr = Expr::from_pair(inner_pairs.next().unwrap());
+        let bexpr = BExpr::from_pair(inner_pairs.next().unwrap());
         let body = Program::from_pair(inner_pairs.next().unwrap());
 
-        Self { expr, body }
+        Self { bexpr, body }
     }
 }
 
@@ -129,7 +129,7 @@ impl Read {
 
 #[derive(Debug)]
 pub struct Print {
-    pub expr: Expr,
+    pub bexpr: BExpr,
 }
 impl Print {
     pub fn from_pair(p: Pair<'_, Rule>) -> Self {
@@ -137,9 +137,9 @@ impl Print {
             panic!("wrong rule type for print: {:?}", p.as_rule())
         }
 
-        let expr = Expr::from_pair(p.into_inner().nth(0).unwrap());
+        let bexpr = BExpr::from_pair(p.into_inner().nth(0).unwrap());
 
-        Self { expr }
+        Self { bexpr }
     }
 }
 
@@ -155,6 +155,108 @@ impl Iden {
 
         Self {
             name: p.as_str().trim().to_owned(),
+        }
+    }
+}
+
+/// Binary expressions (&&, ||)
+#[derive(Debug)]
+pub struct BExpr {
+    pub comp: Comp,
+    pub op: Option<(BExprOp, Box<BExpr>)>,
+}
+impl BExpr {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::bexpr {
+            panic!("wrong rule type for bexpr: {:?}", p.as_rule());
+        }
+
+        let mut inner_rules = p.into_inner();
+        let comp = Comp::from_pair(inner_rules.next().unwrap());
+
+        let op = if let (Some(a), Some(b)) = (inner_rules.next(), inner_rules.next()) {
+            Some((BExprOp::from_pair(a), Box::new(BExpr::from_pair(b))))
+        } else {
+            None
+        };
+
+        Self { comp, op }
+    }
+}
+
+#[derive(Debug)]
+pub enum BExprOp {
+    And,
+    Or,
+}
+impl BExprOp {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::bexpr_op {
+            panic!("wrong rule type for bexpr_op: {:?}", p.as_rule());
+        }
+
+        match p.as_str() {
+            "&&" => Self::And,
+            "||" => Self::Or,
+            op => panic!("invalid bexpr op: {}", op),
+        }
+    }
+}
+
+/// Comparison expressions such as "#a > 5", "#c == #d", etc.
+#[derive(Debug)]
+pub struct Comp {
+    pub expr: Expr,
+    pub op: Option<(CompOp, Box<Comp>)>,
+}
+impl Comp {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::comp {
+            panic!("wrong rule type for comp: {:?}", p.as_rule());
+        }
+
+        let mut inner_rules = p.into_inner();
+        let expr = Expr::from_pair(inner_rules.next().unwrap());
+
+        let op = if let (Some(a), Some(b)) = (inner_rules.next(), inner_rules.next()) {
+            Some((CompOp::from_pair(a), Box::new(Comp::from_pair(b))))
+        } else {
+            None
+        };
+
+        Self { expr, op }
+    }
+}
+
+#[derive(Debug)]
+pub enum CompOp {
+    /// Equals: `==`
+    Eq,
+    /// Not equals: `!=`
+    NotEq,
+    /// Greater than: `>`
+    Gt,
+    /// Less than: `<`
+    Lt,
+    /// Greater than or equals: `>=`
+    Geq,
+    /// Less than or equals: `<=`
+    Leq,
+}
+impl CompOp {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::bexpr_op {
+            panic!("wrong rule type for comp_op: {:?}", p.as_rule());
+        }
+
+        match p.as_str() {
+            "==" => Self::Eq,
+            "!-" => Self::NotEq,
+            ">" => Self::Gt,
+            "<" => Self::Lt,
+            ">=" => Self::Geq,
+            "<=" => Self::Leq,
+            op => panic!("invalid bexpr op: {}", op),
         }
     }
 }
@@ -197,14 +299,14 @@ impl ExprOp {
         match p.as_str() {
             "+" => Self::Add,
             "-" => Self::Subtract,
-            _ => panic!("invalid expr op: {}", p.as_str()),
+            op => panic!("invalid expr op: {}", op),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Factor {
-    pub term: Term,
+    pub unary: Unary,
     pub op: Option<(FactorOp, Box<Factor>)>,
 }
 impl Factor {
@@ -214,7 +316,7 @@ impl Factor {
         }
 
         let mut inner_rules = p.into_inner();
-        let term = Term::from_pair(inner_rules.next().unwrap());
+        let unary = Unary::from_pair(inner_rules.next().unwrap());
 
         let op = if let Some(a) = inner_rules.next() {
             // Op is always multiply since that's the only operation supported at
@@ -226,13 +328,45 @@ impl Factor {
             None
         };
 
-        Self { term, op }
+        Self { unary, op }
     }
 }
 
 #[derive(Debug)]
 pub enum FactorOp {
     Multiply,
+}
+
+#[derive(Debug)]
+pub enum Unary {
+    Term(Term),
+    Unary { op: UnaryOp, unary: Box<Unary> },
+}
+impl Unary {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::unary {
+            panic!("wrong rule type for unary: {:?}", p.as_rule());
+        }
+
+        let mut inner_pairs = p.into_inner();
+
+        let first_inner_pair = inner_pairs.next().unwrap();
+        match first_inner_pair.as_rule() {
+            Rule::unary_op => Self::Unary {
+                // Like with the factor_op rule, there's currently just one
+                op: UnaryOp::Not,
+                unary: Box::new(Unary::from_pair(inner_pairs.next().unwrap())),
+            },
+            Rule::term => Self::Term(Term::from_pair(first_inner_pair)),
+            rule => panic!("Invalid inner rule for unary: {:?}", rule),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum UnaryOp {
+    /// Boolean not operator. Example: `!#a`
+    Not,
 }
 
 #[derive(Debug)]

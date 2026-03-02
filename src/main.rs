@@ -1,4 +1,9 @@
-use std::{error::Error, fs::{self, File}, io::Write, process::exit};
+use std::{
+    error::Error,
+    fs::{self, File},
+    io::Write,
+    process::exit,
+};
 
 use pest::Parser;
 use pest_derive::Parser;
@@ -127,12 +132,20 @@ fn transform_statement(s: &Statement, symbol_table: &mut SymbolTable) -> Vec<Ins
 fn transform_assignment(a: &Assignment, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     let dest = transform_iden(&a.dest, symbol_table);
 
-    transform_expr(&a.src, dest, symbol_table)
+    transform_bexpr(&a.src, dest, symbol_table)
 }
 
 /// Take an Iden node of the AST and insert it into the symbol table, returning the index of the new symbol.
 fn transform_iden(i: &Iden, symbol_table: &mut SymbolTable) -> SymbolIndex {
     symbol_table.get_or_insert_symbol(i)
+}
+
+fn transform_bexpr(
+    b: &BExpr,
+    target_symbol: SymbolIndex,
+    symbol_table: &mut SymbolTable,
+) -> Vec<Instruction> {
+    todo!()
 }
 
 fn transform_expr(
@@ -183,13 +196,21 @@ fn transform_factor(
     target_symbol: SymbolIndex,
     symbol_table: &mut SymbolTable,
 ) -> Vec<Instruction> {
-    let instrs = transform_term(&f.term, target_symbol, symbol_table);
+    let instrs = transform_unary(&f.unary, target_symbol, symbol_table);
 
     if let Some((_op, _factor)) = &f.op {
         unimplemented!("multiplication not implemented (yet!)");
     }
 
     instrs
+}
+
+fn transform_unary(
+    u: &Unary,
+    target_symbol: SymbolIndex,
+    symbol_table: &mut SymbolTable,
+) -> Vec<Instruction> {
+    todo!()
 }
 
 fn transform_term(
@@ -279,7 +300,7 @@ fn transform_while(w: &While, symbol_table: &mut SymbolTable) -> Vec<Instruction
 
     // Evaluate the loop expression
     let loop_symbol = symbol_table.new_internal_symbol();
-    let mut instrs = transform_expr(&w.expr, loop_symbol, symbol_table);
+    let mut instrs = transform_bexpr(&w.bexpr, loop_symbol, symbol_table);
 
     // Move the cell pointer to the loop symbol
     instrs.push(Goto {
@@ -288,7 +309,7 @@ fn transform_while(w: &While, symbol_table: &mut SymbolTable) -> Vec<Instruction
 
     // In the loop...
     let mut loop_body = transform_program(&w.body, symbol_table); // ...execute the body of the loop...
-    loop_body.append(&mut transform_expr(&w.expr, loop_symbol, symbol_table)); // ...reevaluate the expression...
+    loop_body.append(&mut transform_bexpr(&w.bexpr, loop_symbol, symbol_table)); // ...reevaluate the expression...
     loop_body.push(Goto {
         symbol_index: loop_symbol,
     }); // ...and move the cell pointer back to the expression result.
@@ -304,7 +325,7 @@ fn transform_if(i: &If, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     use Instruction::*;
 
     let condition_symbol = symbol_table.new_internal_symbol();
-    let mut instrs = transform_expr(&i.expr, condition_symbol, symbol_table);
+    let mut instrs = transform_bexpr(&i.bexpr, condition_symbol, symbol_table);
 
     let zero_symbol = symbol_table.new_internal_symbol();
     instrs.append(&mut vec![
@@ -346,7 +367,7 @@ fn transform_read(r: &Read, symbol_table: &mut SymbolTable) -> Vec<Instruction> 
 
 fn transform_print(p: &Print, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     let expr_result = symbol_table.new_internal_symbol();
-    let mut instrs = transform_expr(&p.expr, expr_result, symbol_table);
+    let mut instrs = transform_bexpr(&p.bexpr, expr_result, symbol_table);
 
     use Instruction::*;
     instrs.append(&mut vec![
@@ -459,7 +480,7 @@ fn main() {
         Err(e) => {
             println!("{}", e);
             exit(-1);
-        },
+        }
     };
 
     // Write the compiled code to a file called "a.bf"
