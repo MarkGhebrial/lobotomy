@@ -1,0 +1,38 @@
+procedure main() {
+    let #n: u8;
+    let #b: (u8, u8);
+    
+    greet(#n);
+}
+
+enum SymbolType {
+    Byte,
+    Tuple(Vec<SymbolType>),
+}
+
+struct Procedure {
+    arguments: Vec<(name: String, type: SymbolType),
+
+    block: Vec<Statement>,
+
+    return_type: SymbolType,
+}
+fn transform_procedure(p: Procedure, symbol_table: SymbolTable) {
+    symbol_table.new
+    
+    instrs: vec![
+        AdvStack { n: p.stack_frame_size() },
+        transform_program(p.program, symbol_table),
+
+    ]
+}
+
+procedure max(#a: u8, #b: u8) -> (u8, u8) {
+
+}
+
+Calling convention:
+ - Move the cell pointer to the end of the stack (i.e., the just past the greatest address of any variable in the symbol table)
+ - Copy the parameters to the new location of the cell pointer
+ - Move the cell pointer back where it was before
+ - 

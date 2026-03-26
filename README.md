@@ -11,11 +11,8 @@ Compilation happens in four steps:
 2. The parse tree is transformed almost 1:1 into an AST.
 3. The AST is transformed into a symbol table and a list of instructions that reference
    symbols in the table.
-4. The list of instructions and symbol table are transformed into Brainf*ck.
+4. The list of instructions and symbol table are transformed into Brainf*ck code.
 
-Steps one and two are implemented already.
-
-Currently
 
 <!-- ## Variables
 

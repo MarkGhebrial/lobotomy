@@ -2,6 +2,49 @@ use pest::iterators::Pair;
 
 use crate::Rule;
 
+pub struct ProcList {
+    pub procs: Vec<Procedure>,
+}
+
+pub struct Procedure {
+    pub iden: ProcIden,
+    pub args: Args,
+    pub program: Program,
+}
+impl Procedure {
+    pub fn from_pair(p: Pair<'_, Rule>) -> Self {
+        if p.as_rule() != Rule::procedure {
+            panic!("wrong rule type for procedure: {:?}", p.as_rule());
+        }
+
+        let mut inner_pairs = p.into_inner();
+
+        let iden = ProcIden::from_pair(inner_pairs.next().unwrap());
+        let args = Args::from_pair(inner_pairs.next().unwrap());
+        let program = Program::from_pair(inner_pairs.next().unwrap());
+
+        Self { iden, args, program }
+    }
+}
+
+pub struct ProcIden {
+    pub name: String,
+}
+impl ProcIden {
+    fn from_pair(unwrap: Pair<'_, Rule>) -> Self {
+        todo!()
+    }
+}
+
+pub struct Args {
+    pub idens: Vec<Iden>,
+}
+impl Args {
+    fn from_pair(unwrap: Pair<'_, Rule>) -> Self {
+        todo!()
+    }
+}
+
 /// The root of lobotomy's abstract syntax tree.
 #[derive(Debug)]
 pub struct Program {

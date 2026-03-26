@@ -11,39 +11,14 @@ use pest_derive::Parser;
 mod ast;
 use ast::*;
 
+mod ir;
+use ir::*;
+
 mod test;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"] // relative to src
 struct MyParser;
-
-#[derive(Debug)]
-enum Instruction {
-    /// Move the cell pointer to the given symbol. Symbols are specified as indexes
-    /// into the symbol table.
-    ///
-    /// This translates into Brainf*ck as repeated ">" or "<" instructions. The amount
-    /// to move the cell pointer = symbol address - current cell address. This requires
-    /// keeping track of the current cell address
-    Goto { symbol_index: SymbolIndex },
-
-    /// Increment the current cell. This translates to Brainf*ck as repeated "+"
-    /// instructions.
-    Incr { n: u8 },
-    /// Decrement the current cell. This translates to Brainf*ck as repeated "-"
-    /// instructions.
-    Decr { n: u8 },
-
-    /// Wrap the contained instructions in "[" and "]"
-    Loop { instructions: Vec<Instruction> },
-
-    /// Print the contents of the current cell to stdout. This translates to Brainf*ck
-    /// as the "." instruction.
-    Print,
-    /// Overwrite the contents of the current cell with a byte from stdin. This
-    /// translates to Brainf*ck as the "," instruction.
-    Read,
-}
 
 #[derive(Debug)]
 struct SymbolTable {
@@ -67,7 +42,6 @@ impl SymbolTable {
     pub fn new_internal_symbol(&mut self) -> SymbolIndex {
         self.push_symbol(SymbolTableEntry {
             external_name: None,
-            // symbol_type: SymbolType::Variable,
         })
     }
 
@@ -90,20 +64,30 @@ impl SymbolTable {
     }
 }
 
-// type SymbolTable = Vec<SymbolTableEntry>;
 type SymbolIndex = usize;
-
-// TODO: Maybe rename this to SymbolMutability.
-// #[derive(Debug)]
-// enum SymbolType {
-//     Variable,
-//     Constant,
-// }
 
 #[derive(Debug)]
 struct SymbolTableEntry {
+    pub scope: &VariableScope,
     pub external_name: Option<String>,
 }
+
+/// Procedure table
+struct ProcTable {
+    table: Vec<ProcTableEntry>,
+}
+impl ProcTable {
+    pub fn new() -> Self {
+        Self {
+            table: Vec::new()
+        }
+    }
+}
+
+struct ProcTableEntry {
+
+}
+
 
 /// Given an AST node of type Program and a symbol table, generate a list of instructions.
 fn transform_program(p: &Program, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
@@ -168,20 +152,20 @@ fn transform_expr(
         instrs.append(&mut vec![
             // while (temp) { temp -= 1; op_result += 1; }
             Goto {
-                symbol_index: right_expr_result,
+                cell: right_expr_result,
             },
             Loop {
                 instructions: vec![
                     Decr { n: 1 },
                     Goto {
-                        symbol_index: target_symbol,
+                        cell: target_symbol,
                     },
                     match op {
                         ExprOp::Add => Incr { n: 1 },
                         ExprOp::Subtract => Decr { n: 1 },
                     },
                     Goto {
-                        symbol_index: right_expr_result,
+                        cell: right_expr_result,
                     },
                 ],
             },
@@ -229,7 +213,7 @@ fn transform_term(
             let instrs: Vec<Instruction> = vec![
                 // Move the cell pointer to the address of the target symbol
                 Goto {
-                    symbol_index: target_symbol,
+                    cell: target_symbol,
                 },
                 // Set the cell to zero
                 Loop {
@@ -264,30 +248,30 @@ fn copy(src: SymbolIndex, dest: SymbolIndex, symbol_table: &mut SymbolTable) -> 
     use Instruction::*;
     instrs.append(&mut vec![
         // Set the destination to zero
-        Goto { symbol_index: dest },
+        Goto { cell: dest },
         Loop {
             instructions: vec![Decr { n: 1 }],
         },
         // Equivalent pseudocode: while (src) { src -= 1; dest += 1; temp += 1; }
-        Goto { symbol_index: src },
+        Goto { cell: src },
         Loop {
             instructions: vec![
                 Decr { n: 1 },
-                Goto { symbol_index: dest },
+                Goto { cell: dest },
                 Incr { n: 1 },
-                Goto { symbol_index: temp },
+                Goto { cell: temp },
                 Incr { n: 1 },
-                Goto { symbol_index: src },
+                Goto { cell: src },
             ],
         },
         // while (temp) { temp -= 1; src += 1; }
-        Goto { symbol_index: temp },
+        Goto { cell: temp },
         Loop {
             instructions: vec![
                 Decr { n: 1 },
-                Goto { symbol_index: src },
+                Goto { cell: src },
                 Incr { n: 1 },
-                Goto { symbol_index: temp },
+                Goto { cell: temp },
             ],
         },
     ]);
@@ -304,14 +288,14 @@ fn transform_while(w: &While, symbol_table: &mut SymbolTable) -> Vec<Instruction
 
     // Move the cell pointer to the loop symbol
     instrs.push(Goto {
-        symbol_index: loop_symbol,
+        cell: loop_symbol,
     });
 
     // In the loop...
     let mut loop_body = transform_program(&w.body, symbol_table); // ...execute the body of the loop...
     loop_body.append(&mut transform_bexpr(&w.bexpr, loop_symbol, symbol_table)); // ...reevaluate the expression...
     loop_body.push(Goto {
-        symbol_index: loop_symbol,
+        cell: loop_symbol,
     }); // ...and move the cell pointer back to the expression result.
 
     instrs.push(Loop {
@@ -330,7 +314,7 @@ fn transform_if(i: &If, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     let zero_symbol = symbol_table.new_internal_symbol();
     instrs.append(&mut vec![
         Goto {
-            symbol_index: zero_symbol,
+            cell: zero_symbol,
         },
         Loop {
             instructions: vec![Decr { n: 1 }],
@@ -338,12 +322,12 @@ fn transform_if(i: &If, symbol_table: &mut SymbolTable) -> Vec<Instruction> {
     ]);
 
     instrs.push(Goto {
-        symbol_index: condition_symbol,
+        cell: condition_symbol,
     });
 
     let mut if_body = transform_program(&i.body, symbol_table);
     if_body.push(Goto {
-        symbol_index: zero_symbol,
+        cell: zero_symbol,
     }); // JMove the cell pointer to the zero symbol so we're guaranteed the loop exits
 
     instrs.push(Loop {
@@ -359,7 +343,7 @@ fn transform_read(r: &Read, symbol_table: &mut SymbolTable) -> Vec<Instruction> 
     use Instruction::*;
     vec![
         Goto {
-            symbol_index: symbol,
+            cell: symbol,
         },
         Read,
     ]
@@ -372,7 +356,7 @@ fn transform_print(p: &Print, symbol_table: &mut SymbolTable) -> Vec<Instruction
     use Instruction::*;
     instrs.append(&mut vec![
         Goto {
-            symbol_index: expr_result,
+            cell: expr_result,
         },
         Print,
     ]);
@@ -380,78 +364,13 @@ fn transform_print(p: &Print, symbol_table: &mut SymbolTable) -> Vec<Instruction
     instrs
 }
 
-/// Enumeration of all the commands in Brainf*ck
-#[repr(u8)]
-enum BFCommand {
-    ShiftPointerLeft = b'<',  // <
-    ShiftPointerRight = b'>', // >
-    IncrementCell = b'+',     // +
-    DecrementCell = b'-',     // -
-    OutputByte = b'.',        // .
-    InputByte = b',',         // ,
-    JumpForward = b'[',       // [
-    JumpBackward = b']',      // ]
-}
 
-/// Given a symbol table and a vector of [Instruction]s, generate the final Brainf*ck
-/// code.
-fn generate_bf(
-    commands: &mut Vec<BFCommand>,
-    cell_pointer: &mut usize,
-    symbol_table: &SymbolTable,
-    instrs: &Vec<Instruction>,
-) {
-    use BFCommand::*;
-
-    for instr in instrs {
-        match instr {
-            Instruction::Goto { symbol_index } => {
-                // Move the pointer right if it's to the left of the symbol's address.
-                if *symbol_index > *cell_pointer {
-                    for _ in 0..(*symbol_index - *cell_pointer) {
-                        commands.push(ShiftPointerRight);
-                    }
-                }
-                // Move the pointer left if it's to the right of the symbol's address.
-                else if *cell_pointer > *symbol_index {
-                    for _ in 0..(*cell_pointer - *symbol_index) {
-                        commands.push(ShiftPointerLeft);
-                    }
-                }
-
-                // Keep track of the cell's new location
-                *cell_pointer = *symbol_index;
-            }
-            Instruction::Incr { n } => {
-                for _ in 0..*n {
-                    commands.push(IncrementCell);
-                }
-            }
-            Instruction::Decr { n } => {
-                for _ in 0..*n {
-                    commands.push(DecrementCell);
-                }
-            }
-            Instruction::Loop { instructions } => {
-                commands.push(JumpForward);
-                generate_bf(commands, cell_pointer, symbol_table, instructions);
-                commands.push(JumpBackward);
-            }
-            Instruction::Print => {
-                commands.push(OutputByte);
-            }
-            Instruction::Read => {
-                commands.push(InputByte);
-            }
-        }
-    }
-}
 
 pub fn compile(src: &str) -> Result<String, Box<dyn Error>> {
     let mut parse_result = MyParser::parse(Rule::file, src)?;
 
     // Convert the parse tree to an AST
-    let program = Program::from_pair(parse_result.nth(0).unwrap());
+    let program = ProcList::from_pair(parse_result.nth(0).unwrap());
 
     // Create the symbol table
     let mut symbol_table: SymbolTable = SymbolTable::new();
@@ -459,7 +378,7 @@ pub fn compile(src: &str) -> Result<String, Box<dyn Error>> {
     let instructions = transform_program(&program, &mut symbol_table);
 
     let mut code: Vec<BFCommand> = Vec::new();
-    generate_bf(&mut code, &mut 0, &symbol_table, &instructions);
+    generate_bf(&mut code, &mut 0, &mut 0, &symbol_table, &instructions);
 
     Ok(code.into_iter().map(|c| c as u8 as char).collect())
 }

@@ -1,0 +1,102 @@
+proc @main() {
+    // jump point 0
+    read #n;
+
+    #n = @fibonacci(#n);
+    // jump point 1
+}
+
+proc @fibonacci(#n) -> #out {
+    // jump point 2
+    if #n == 1 || #n == 2 {
+        #out = 1;
+    } else {
+        #out = 
+            @fibonacci(#n - 1) + // jump point 3
+            @fibonacci(#n - 2);  // jump point 4
+    }
+    // implicit return
+}
+
+
+^^ LOBO PROGRAM ^^
+//////////////////////////////////////////
+vv HIGH LEVEL IR vv
+
+/// High level IR
+struct Hir {
+    statements: Vec<HirStatement>,
+}
+enum Statement {
+    Assignment(HirAssignment),
+    While(HirWhile),
+    If(HirIf),
+    ShiftRight(HirShiftRight),
+    ShiftLeft(HirShiftLeft),
+    Read(HirRead),
+    Print(HirPrint),
+}
+struct HirAssignment {
+    destination: HirIden,
+    src: HirExpr,
+}
+enum HirIden {
+    Named { name: String },
+    Anon,
+}
+struct HirExpr {
+    // Addition and subtraction only
+}
+struct HirWhile {
+    condition: HirIden,
+    loop_body: Hir,
+}
+struct HirIf {
+    condition: HirIden,
+    loop_body: Hir,
+}
+struct HirShiftRight {
+
+}
+
+type SymbolReference = Rc<Symbol>;
+struct Procedure {
+    
+}
+
+#continue_program = 1;
+
+#jmp0 = 1;
+#jmp1 = 0;
+#jmp2 = 0;
+#jmp3 = 0;
+#jmp4 = 0;
+
+while #continue_program {
+    if #jmp0 {
+        read #n;
+        { // call @fibonacci(#n)
+            shift_right 6;
+            #continue_program = 1;
+            #jmp0 = 0;
+            #jmp1 = 0;
+            #jmp2 = 1;
+            #jmp3 = 0;
+            #jmp4 = 0;
+        }
+    };
+    if #jmp1 {
+        shift_left 7;
+        #continue_program = 0;
+    };
+    if #jmp2 {
+        #condition = // compute the expression for the if statement
+        if #condition {
+            
+        };
+    };
+};
+
+^^ HIGH LEVEL IR ^^
+//////////////////////////////////////////
+vv LOW LEVEL IR vv

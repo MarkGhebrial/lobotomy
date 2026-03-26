@@ -1,13 +1,22 @@
-file = _{ SOI ~ program ~ EOI }
+file = _{ SOI ~ proc_list ~ EOI }
+
+proc_list = { procedure* }
+
+procedure = { "procedure" ~ proc_iden ~ "(" ~ args ~ ")" ~ "{" ~ program ~ "}" }
+proc_iden = { "@" ~ (ASCII_ALPHANUMERIC | "_")+ }
+args = { (iden ~ ("," ~ iden)*)? ~ ","? }
 
 /// Programs in lobotomy are lists of statements
 program = { statement* }
 
 /// There are several different types of statements, and they're all terminated with
 /// semicolons.
-statement = { (assignment | while | if | read | print) ~ ";" }
+statement = { (proc_call | assignment | while | if | read | print) ~ ";" }
 
 /* STATEMENTS */
+/// Invoke a procedure
+proc_call = { proc_iden ~ "(" ~ args ~ ")" }
+
 /// Copy the results of an expression into a variable
 assignment = { iden ~ "=" ~ bexpr }
 
